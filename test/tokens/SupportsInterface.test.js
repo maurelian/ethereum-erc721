@@ -1,4 +1,5 @@
-const SupportsInterface = artifacts.require('SupportsInterface');
+// const SupportsInterface = artifacts.require('SupportsInterface');
+const SupportsInterface = artifacts.require('SupportsInterface.vyper');
 
 contract('SupportsInterface', (accounts) => {
 

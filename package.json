@@ -10,7 +10,9 @@
   },
   "scripts": {
     "clean": "rm -Rf ./build",
-    "compile": "truffle compile",
+    "compile:sol": "truffle compile",
+    "compile:vyper": "truper",
+    "compile": "npm run compile:sol && npm run compile:vyper",
     "console": "truffle console",
     "flatten": "mkdir -p build && truffle-flattener contracts/**/*.sol >> build/bundle.sol",
     "lint": "eslint './**/*.js?(x)'",
@@ -18,7 +20,7 @@
     "networks": "truffle networks",
     "postpublish": "npm run clean",
     "prepublish": "npm run compile",
-    "test": "npm run clean && truffle test"
+    "test": "npm run compile:vyper && truffle test"
   },
   "author": "0xcert",
   "license": "MIT",
@@ -56,6 +58,7 @@
     "eslint": "^4.19.1",
     "ethjs-util": "^0.1.4",
     "truffle": "^4.1.11",
-    "truffle-flattener": "^1.2.5"
+    "truffle-flattener": "^1.2.5",
+    "truper": "0.0.1"
   }
 }
