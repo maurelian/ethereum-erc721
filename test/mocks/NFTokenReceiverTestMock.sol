@@ -1,8 +1,9 @@
 pragma solidity ^0.4.23;
 
+// NOTE: this import was unnecessary, and caused me issues for
 import "../../contracts/tokens/ERC721TokenReceiver.sol";
 
-contract NFTokenReceiverTestMock is ERC721TokenReceiver {
+contract NFTokenReceiverTestMock { //is ERC721TokenReceiver {
 
   function onERC721Received(
     address _from,

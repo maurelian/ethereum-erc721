@@ -90,6 +90,37 @@ def ownerOf(_tokenId: uint256) -> (address):
   assert self.idToOwner[_tokenId] != 0x0000000000000000000000000000000000000000
   return self.idToOwner[_tokenId]
 
+### TRANSFER FUNCTION HELPERS ###
+
+# NOTE: as VYPER uses a new message call for a function call, I needed to pass `_sender: address` 
+#   rather than use msg.sender
+# @dev Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
+# address for this NFT. 
+# Throws if `_from` is not the current owner. 
+# Throws if `_to` is the zero address. 
+# Throws if `_tokenId` is not a valid NFT.
+@private
+def _validateTransferFrom(_from: address, _to: address, _tokenId: uint256, _sender: address):
+  assert _from != 0x0000000000000000000000000000000000000000 # Throws if `_tokenId` is not a valid NFT.
+  assert self.idToOwner[_tokenId] == _from # Throws if `_from` is not the current owner. 
+  senderIsOwner: bool = self.idToOwner[_tokenId] == _sender 
+  senderIsApproved: bool = self.idToApprovals[_tokenId] == _sender
+  senderIsOperator: bool = (self.ownerToOperators[_from])[_sender]
+  # Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
+  #   address for this NFT. 
+  assert (senderIsOwner or senderIsApproved) or senderIsOperator
+  assert _to != 0x0000000000000000000000000000000000000000 # Throws if `_to` is the zero address. 
+
+@private
+def _doTransfer(_from: address, _to: address, _tokenId: uint256):
+  self.idToOwner[_tokenId] = _to # 1. update idToOwner
+  self.idToApprovals[_tokenId] = 0x0000000000000000000000000000000000000000 # 2. zero out idToApprovals
+  self.ownerToNFTokenCount[_to] += 1 # 3. increment ownerToNFTokenCount for _to
+  self.ownerToNFTokenCount[_from] -= 1 # 3. decrement ownerToNFTokenCount for _from
+  log.Transfer(_from, _to, _tokenId)
+
+
+### TRANSFER FUNCTIONS ###
 
 # @dev Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
 # address for this NFT. 
@@ -103,23 +134,8 @@ def ownerOf(_tokenId: uint256) -> (address):
 # @param _tokenId The NFT to transfer.
 @public
 def transferFrom(_from: address, _to: address, _tokenId: uint256):
-  # verify requirements
-  assert _from != 0x0000000000000000000000000000000000000000 # Throws if `_tokenId` is not a valid NFT.
-  assert self.idToOwner[_tokenId] == _from # Throws if `_from` is not the current owner. 
-  senderIsOwner: bool = self.idToOwner[_tokenId] == msg.sender 
-  senderIsApproved: bool = self.idToApprovals[_tokenId] == msg.sender
-  senderIsOperator: bool = (self.ownerToOperators[_from])[msg.sender]
-  # Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
-  #   address for this NFT. 
-  assert (senderIsOwner or senderIsApproved) or senderIsOperator
-  assert _to != 0x0000000000000000000000000000000000000000 # Throws if `_to` is the zero address. 
-  # Make the transfer
-  self.idToOwner[_tokenId] = _to # 1. update idToOwner
-  self.idToApprovals[_tokenId] = 0x0000000000000000000000000000000000000000 # 2. zero out idToApprovals
-  self.ownerToNFTokenCount[_to] += 1 # 3. increment ownerToNFTokenCount for _to
-  self.ownerToNFTokenCount[_from] -= 1 # 3. decrement ownerToNFTokenCount for _from
-  log.Transfer(_from, _to, _tokenId)
-
+  self._validateTransferFrom(_from, _to, _tokenId, msg.sender)
+  self._doTransfer(_from, _to, _tokenId)
 
 # @dev Transfers the ownership of an NFT from one address to another address.
 # @notice Throws unless `msg.sender` is the current owner, an authorized operator, or the
@@ -133,11 +149,9 @@ def transferFrom(_from: address, _to: address, _tokenId: uint256):
 # @param _data Additional data with no specified format, sent in call to `_to`.
 # @public
 # def safeTransferFrom(_from: address, _to: address, _tokenId: uint256, _data: bytes[164]):
+# Note: This function is cannot be implemented in vyper, as it lacks function overloading. 
+#   It is also untested in the original test suite from the 0xcert repo
   
-
-
-
-
 
 # @dev Transfers the ownership of an NFT from one address to another address.
 # @notice This works identically to the other function with an extra data parameter, except this
@@ -147,14 +161,12 @@ def transferFrom(_from: address, _to: address, _tokenId: uint256):
 # @param _tokenId The NFT to transfer.
 @public
 def safeTransferFrom(_from: address, _to: address, _tokenId: uint256):
-  self.transferFrom(_from, _to, _tokenId)
-  # def raw_call(a, b, outsize=c, gas=d, value=e) -> f:
-  # https://vyper.readthedocs.io/en/latest/built-in-functions.html?highlight=convert#raw-call
-  # 2300 gas is same as solidity's `send()/transfer()` stipend
-  if _to.
-  returnValue: bytes[4] = raw_call(_to, '', outsize=4, gas=2300)
-  # Placeholder2(returnValue)
-  assert returnValue == '\xf0\xb9\xe5\xba'
+  self._validateTransferFrom(_from, _to, _tokenId, msg.sender)
+  self._doTransfer(_from, _to, _tokenId)
+  if(_to.codesize > 0):
+    # provide 2300 gas similar to solidity's `send()/transfer()` stipend
+    returnValue: bytes[4] = raw_call(_to, '\xf0\xb9\xe5\xba', outsize=4, gas=2300)
+    assert returnValue == '\xf0\xb9\xe5\xba'
 
 # @dev Set or reaffirm the approved address for an NFT.
 # @notice The zero address indicates there is no approved address. Throws unless `msg.sender` is
@@ -180,13 +192,8 @@ def approve(_approved: address, _tokenId: uint256):
 # @param _approved True if the operators is approved, false to revoke approval.
 @public
 def setApprovalForAll(_operator: address, _approved: bool):
-  # checks 
-  assert _operator != 0x0000000000000000000000000000000000000000
-  # set it
   self.ownerToOperators[msg.sender][_operator] = _approved
-  # log it 
   log.ApprovalForAll(msg.sender, _operator, _approved)
-
 
 # @dev Get the approved address for a single NFT.
 # @notice Throws if `_tokenId` is not a valid NFT.
@@ -208,6 +215,9 @@ def isApprovedForAll( _owner: address, _operator: address) -> (bool):
     return False
   return (self.ownerToOperators[_owner])[_operator]
 
+### Non-standard functions ###
+
+# These functions are not part of erc721, but are used in the test suite
 @public
 def mint(_to: address, _tokenId: uint256):
   assert self.idToOwner[_tokenId] == 0x0000000000000000000000000000000000000000
@@ -218,72 +228,7 @@ def mint(_to: address, _tokenId: uint256):
   log.Transfer(0x0000000000000000000000000000000000000000, _to, _tokenId)
 
 @public
-def burn():
-  log.Placeholder()
-
-#### Private Functions ####
-
-# @dev Actually perform the safeTransferFrom.
-# @param _from The current owner of the NFT.
-# @param _to The new owner.
-# @param _tokenId The NFT to transfer.
-# @param _data Additional data with no specified format, sent in call to `_to`.
-@private
-def _safeTransferFrom():
-  log.Placeholder()
-
-# @dev Actually preforms the transfer.
-# @notice Does NO checks.
-# @param _to Address of a new owner.
-# @param _tokenId The NFT that is being transferred.
-@private
-def _transfer():
-  log.Placeholder()
-
-# @dev Mints a new NFT.
-# @notice This is a private function which should be called from user-implemented external
-# mint function. Its purpose is to show and properly initialize data structures when using this
-# implementation.
-# @param _to The address that will own the minted NFT.
-# @param _tokenId of the NFT to be minted by the msg.sender.
-@private
-def _mint(_to: address, _tokenId: uint256):
-  assert self.idToOwner[_tokenId] == 0x0000000000000000000000000000000000000000
-  assert _to != 0x0000000000000000000000000000000000000000
-  assert _tokenId != 0
-  self.idToOwner[_tokenId] = _to
-  self.ownerToNFTokenCount[_to] += 1
-  log.Transfer(0x0000000000000000000000000000000000000000, _to, _tokenId)
-   
-
-# @dev Burns a NFT.
-# @notice This is a private function which should be called from user-implemented external
-# burn function. Its purpose is to show and properly initialize data structures when using this
-# implementation.
-# @param _owner Address of the NFT owner.
-# @param _tokenId ID of the NFT to be burned.
-@private
-def _burn(_from: address, _tokenId: uint256):
-  log.Transfer(_from, 0x0000000000000000000000000000000000000000, _tokenId)
-
-# @dev Clears the current approval of a given NFT ID.
-# @param _tokenId ID of the NFT to be transferred.
-@private
-def clearApproval():
-  log.Placeholder()
-
-# @dev Removes a NFT from owner.
-# @notice Use and override this function with caution. Wrong usage can have serious consequences.
-# @param _from Address from wich we want to remove the NFT.
-# @param _tokenId Which NFT we want to remove.
-@private
-def removeNFToken():
-  log.Placeholder()
-
-# @dev Assignes a new NFT to owner.
-# @notice Use and override this function with caution. Wrong usage can have serious consequences.
-# @param _to Address to wich we want to add the NFT.
-# @param _tokenId Which NFT we want to add.
-@private
-def addNFToken():
-  log.Placeholder()
+def burn(_owner: address, _tokenId: uint256):
+  assert self.idToOwner[_tokenId] != 0x0000000000000000000000000000000000000000
+  self._doTransfer(_owner, 0x0000000000000000000000000000000000000000, _tokenId)
+  log.Transfer(_owner, 0x0000000000000000000000000000000000000000, _tokenId)
